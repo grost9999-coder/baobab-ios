@@ -29,4 +29,5 @@ Open `Baobab.xcodeproj` in Xcode 15 or later and run on iOS 17+. The source uses
 - TII public product query: https://insprod.tii.org.tw/Query.aspx
 - Taiwan Insurance Bureau public-information portal: https://ins-info.ib.gov.tw/
 - Product data schema and verification rules: [`docs/product-data-schema.md`](docs/product-data-schema.md)
+- Three-track data acquisition plan and unsent request drafts: [`docs/data-acquisition-plan-and-requests.md`](docs/data-acquisition-plan-and-requests.md)
 - Catalog format checker: `python3 scripts/validate_product_catalog.py`
