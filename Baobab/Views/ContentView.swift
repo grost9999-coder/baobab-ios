@@ -38,6 +38,8 @@ struct ContentView: View {
                 .tabItem { Label("拍照建檔", systemImage: "camera.viewfinder") }
             gapsTab
                 .tabItem { Label("保障檢視", systemImage: "checklist") }
+            CatalogView()
+                .tabItem { Label("商品條款", systemImage: "books.vertical") }
             claimTab
                 .tabItem { Label("理賠試算", systemImage: "function") }
         }

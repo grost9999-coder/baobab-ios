@@ -3,6 +3,7 @@ import Foundation
 struct InsuranceProduct: Identifiable, Codable, Hashable {
     let id: String
     var company: String
+    var companyCode: String?
     var name: String
     var productCode: String?
     var line: String
