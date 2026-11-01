@@ -1,37 +1,77 @@
 import Foundation
 
-/// Conservative, deterministic lower-bound calculation. No policy wording inference is performed.
 enum ClaimEstimator {
-    static func estimate(input: ClaimInput, benefits: [PolicyBenefit], clauseVerified: Bool) -> ClaimEstimate {
-        guard clauseVerified else {
-            return ClaimEstimate(minimumKnownNTD: 0, includedItems: [], excludedItems: ["條款版本尚未核對；不產生金額估算"])
-        }
+    private static let maximumSingleBenefitNTD = 1_000_000_000
+
+    static func estimate(
+        input: ClaimInput,
+        policies: [UserPolicy],
+        surgeryAmounts: [UUID: Int],
+        confirmedSurgeryPolicies: Set<UUID>
+    ) -> ClaimEstimate {
         var total = 0
         var included: [String] = []
         var excluded: [String] = []
-        for benefit in benefits where benefit.verifiedEligible {
-            switch benefit.kind {
-            case .inpatientDaily:
-                guard !input.outpatientSurgery, input.hospitalDays > 0, let daily = benefit.amountNTD else { continue }
-                let days = min(input.hospitalDays, benefit.maxDays ?? input.hospitalDays)
-                let amount = days * daily
-                total += amount
-                included.append("\(benefit.label)：\(days) 日 × \(daily) 元 = \(amount) 元")
-            case .surgeryLumpSum, .surgerySchedule, .outpatientSurgery:
-                guard let amount = input.explicitSurgeryBenefitNTD, amount > 0 else {
-                    excluded.append("\(benefit.label)：需依條款手術表/代碼核對，未自行推定")
+        let claimDay = Calendar.current.startOfDay(for: input.eventDate)
+
+        for policy in policies {
+            guard policy.clauseIsVerified else {
+                excluded.append("\(policy.insurer)／\(policy.productName)：條款版本/來源未核對，未納入")
+                continue
+            }
+            guard let startDate = policy.startDate,
+                  Calendar.current.startOfDay(for: startDate) <= claimDay,
+                  policy.endDate.map({ Calendar.current.startOfDay(for: $0) >= claimDay }) ?? true else {
+                excluded.append("\(policy.insurer)／\(policy.productName)：保單生效日未確認，或就醫日不在已記錄的有效期間，未納入")
+                continue
+            }
+
+            if !input.outpatientSurgery, input.hospitalDays > 0 {
+                for benefit in policy.benefits where benefit.kind == .inpatientDaily && benefit.verifiedEligible {
+                    guard let dailyAmount = benefit.amountNTD,
+                          dailyAmount > 0,
+                          dailyAmount <= maximumSingleBenefitNTD else { continue }
+                    let allowedDays = max(benefit.maxDays ?? input.hospitalDays, 0)
+                    let days = min(input.hospitalDays, allowedDays)
+                    guard days > 0 else { continue }
+                    let amount = days * dailyAmount
+                    total += amount
+                    included.append("\(policy.insurer)／\(policy.productName)－\(benefit.label)：\(days) 日 × NT$\(dailyAmount) = NT$\(amount)")
+                }
+            }
+
+            let requiredBenefit: BenefitKind = input.outpatientSurgery ? .outpatientSurgery : .surgerySchedule
+            let hasApplicableVerifiedBenefit = policy.benefits.contains {
+                $0.kind == requiredBenefit && $0.verifiedEligible
+            }
+            if let amount = surgeryAmounts[policy.id], amount > 0 {
+                guard !input.surgeryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    excluded.append("\(policy.insurer)／\(policy.productName)：尚未輸入本次手術項目，未納入手術給付")
                     continue
                 }
-                if benefit.kind == .outpatientSurgery && !input.outpatientSurgery { continue }
-                total += amount
-                included.append("\(benefit.label)：依已核對的輸入金額 \(amount) 元")
-            case .actualExpense:
-                excluded.append("\(benefit.label)：實支實付須核對收據、限額、除外責任及已領給付，未納入最低額")
-            case .other:
-                excluded.append("\(benefit.label)：給付條件尚未結構化，未納入")
+                guard amount <= maximumSingleBenefitNTD else {
+                    excluded.append("\(policy.insurer)／\(policy.productName)：輸入金額超出試算上限，未納入")
+                    continue
+                }
+                guard hasApplicableVerifiedBenefit else {
+                    excluded.append("\(policy.insurer)／\(policy.productName)：未記錄符合本次類型的已核對手術給付項目，未納入")
+                    continue
+                }
+                if confirmedSurgeryPolicies.contains(policy.id) {
+                    total += amount
+                    let event = input.outpatientSurgery ? "門診手術" : "手術"
+                    included.append("\(policy.insurer)／\(policy.productName)－\(event)（\(input.surgeryName)）：依你核對的該保單條款金額 NT$\(amount)")
+                } else {
+                    excluded.append("\(policy.insurer)／\(policy.productName)：手術金額已輸入，但尚未確認對應條款/手術表項目")
+                }
+            }
+
+            if policy.benefits.contains(where: { $0.kind == .actualExpense }) {
+                excluded.append("\(policy.insurer)／\(policy.productName)：實支實付須依收據、限額、除外責任及已領給付審核，未列入最低估算")
             }
         }
-        if included.isEmpty { excluded.append("沒有符合「條款已核對且給付條件明確」的項目") }
+
+        if included.isEmpty { excluded.append("目前沒有符合條款版本已核對、保單有效期間確認且給付金額明確的項目；不以缺少資料推算保障") }
         return ClaimEstimate(minimumKnownNTD: total, includedItems: included, excludedItems: excluded)
     }
 }

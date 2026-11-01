@@ -17,7 +17,11 @@ enum PolicyPhotoOCR {
             request.recognitionLanguages = ["zh-Hant", "en-US"]
             request.usesLanguageCorrection = true
             DispatchQueue.global(qos: .userInitiated).async {
-                try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+                do {
+                    try VNImageRequestHandler(cgImage: cgImage).perform([request])
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
         }
     }
