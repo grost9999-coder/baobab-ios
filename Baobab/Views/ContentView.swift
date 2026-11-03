@@ -16,6 +16,11 @@ struct ContentView: View {
     @State private var outpatientSurgery = false
     @State private var surgeryAmounts: [UUID: String] = [:]
     @State private var confirmedSurgeryPolicies: Set<UUID> = []
+    @State private var diagnosisPhoto: PhotosPickerItem?
+    @State private var diagnosisBusy = false
+    @State private var diagnosisText = ""
+    @State private var treatmentText = ""
+    @State private var treatmentKind: TreatmentKind = .inpatientSurgery
 
     private var estimate: ClaimEstimate {
         if store.storageMessage != nil {
@@ -149,6 +154,9 @@ struct ContentView: View {
                         .padding(.vertical, 3)
                     }
                 }
+                Section("想確認自己的保障缺口？") {
+                    ContactCard(context: "我想請你協助檢視我的保單保障缺口")
+                }
                 Section("如何解讀") {
                     Text("這是依你自行建檔的保障清單所做的整理，不會判斷適不適合、保額是否足夠，也不會把「未找到」當成確定缺口。")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -163,6 +171,31 @@ struct ContentView: View {
     private var claimTab: some View {
         NavigationStack {
             Form {
+                Section("診斷書／醫師說明") {
+                    PhotosPicker(selection: $diagnosisPhoto, matching: .images) {
+                        Label("上傳診斷書照片（本機辨識文字）", systemImage: "doc.text.viewfinder")
+                    }
+                    .onChange(of: diagnosisPhoto) { _, item in
+                        Task {
+                            guard let data = try? await item?.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+                            diagnosisBusy = true
+                            defer { diagnosisBusy = false }
+                            diagnosisText = (try? await PolicyPhotoOCR.recognize(image)) ?? "無法辨識，請手動輸入。"
+                            diagnosisPhoto = nil
+                        }
+                    }
+                    if diagnosisBusy { ProgressView("正在本機辨識文字…") }
+                    TextField("疾病／診斷名稱（醫師告知或診斷書原文）", text: $diagnosisText, axis: .vertical)
+                    TextField("治療方式（例如：腹腔鏡膽囊切除術）", text: $treatmentText, axis: .vertical)
+                    Picker("治療類型", selection: $treatmentKind) {
+                        ForEach(TreatmentKind.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .onChange(of: treatmentKind) { _, kind in
+                        outpatientSurgery = (kind == .outpatientSurgery)
+                    }
+                    Text("診斷書照片與辨識文字不會被保存。請核對辨識內容，並以醫師原文為準。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 Section("本次就醫資訊") {
                     DatePicker("就醫日期", selection: $eventDate, displayedComponents: .date)
                     Stepper("住院天數：\(hospitalDays) 天", value: $hospitalDays, in: 0...365)
@@ -201,6 +234,9 @@ struct ContentView: View {
                     ForEach(estimate.excludedItems, id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
                     Text("此結果僅合計你輸入並逐張確認的定額給付，不是理賠承諾。實際理賠由保險公司依保單生效版本、診斷、手術代碼、除外責任、收據及完整理賠文件審核。")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("需要協助申請理賠？") {
+                    ContactCard(context: "我要申請理賠，診斷：\(diagnosisText.prefix(60))；治療：\(treatmentText.prefix(60))；類型：\(treatmentKind.rawValue)")
                 }
             }
             .navigationTitle("理賠試算")
@@ -263,5 +299,49 @@ private struct CameraPicker: UIViewControllerRepresentable {
             parent.dismiss()
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+    }
+}
+
+enum TreatmentKind: String, CaseIterable, Identifiable {
+    case outpatient = "門診"
+    case inpatient = "住院（未手術）"
+    case inpatientSurgery = "住院手術"
+    case outpatientSurgery = "門診手術"
+    var id: String { rawValue }
+}
+
+private struct ContactCard: View {
+    let context: String
+    private let phone = "0988777918"
+    private let email = "grost9999@gmail.com"
+    private let lineID = "0988777918"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("需要時可直接聯繫").font(.headline)
+            if let url = URL(string: "https://line.me/ti/p/~\(lineID)") {
+                Link(destination: url) { Label("LINE 聯絡", systemImage: "message") }
+            }
+            if let url = URL(string: "tel:\(phone)") {
+                Link(destination: url) { Label("撥打 \(phone)", systemImage: "phone") }
+            }
+            if let url = mailURL {
+                Link(destination: url) { Label("Email 聯絡", systemImage: "envelope") }
+            }
+            Text("Email 只會預填你在本頁輸入的摘要（理賠頁含診斷與治療文字），不會附上保單或照片；是否寄出由你決定。")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var mailURL: URL? {
+        var c = URLComponents()
+        c.scheme = "mailto"
+        c.path = email
+        c.queryItems = [
+            URLQueryItem(name: "subject", value: "Baobab 保單諮詢"),
+            URLQueryItem(name: "body", value: context)
+        ]
+        return c.url
     }
 }
