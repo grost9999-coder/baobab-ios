@@ -89,7 +89,7 @@ def nanshan(path):
                         end = f"{y:04d}-{mo:02d}-{dd:02d}T00:00:00Z"
                     note = f"來源標示：{st}。"
                 continue
-            if "文宣條目】" in l or (l.startswith("【") and not names):
+            if (l.startswith("【") and "文宣條目" in l) or (l.startswith("【") and not names):
                 continue  # 章節標題/前置註記，不是商品名稱
             if not names or l.startswith("南山人壽"):
                 names.append(l)

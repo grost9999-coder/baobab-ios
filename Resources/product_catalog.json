@@ -4042,15 +4042,16 @@
       "productCode": "URSDB"
     },
     {
-      "id": "206-6432cc9537",
+      "id": "206-9834906277",
       "company": "南山人壽保險股份有限公司",
       "companyCode": "206",
-      "name": "南山人壽憶起幸福終身保險(DMAL)【ILP 投資型商品簡介】（7個文宣條目）",
+      "name": "南山人壽憶起幸福終身保險(DMAL)",
       "line": "壽險",
       "salesStatus": "未確認",
       "provenance": "使用者提供名稱清單：南山商品簡介暨行銷文宣一覽表（文宣品號 PA398，製表 2026-10-01）。僅為搜尋提示；未核對現售狀態、條款版本或給付內容。",
       "dataQuality": "needsReview",
-      "benefits": []
+      "benefits": [],
+      "productCode": "DMAL"
     },
     {
       "id": "206-fd73d5716e",
@@ -4199,15 +4200,16 @@
       "salesEnd": "2026-10-01T00:00:00Z"
     },
     {
-      "id": "206-78df54196d",
+      "id": "206-f7c7e8adca",
       "company": "南山人壽保險股份有限公司",
       "companyCode": "206",
-      "name": "南山人壽鑫月雙享外幣變額年金保險 (UBVA3)【A&H 商品簡介】（53個文宣條目）",
+      "name": "南山人壽鑫月雙享外幣變額年金保險 (UBVA3)",
       "line": "壽險",
       "salesStatus": "停售",
       "provenance": "使用者提供名稱清單：南山商品簡介暨行銷文宣一覽表（文宣品號 MP602，製表 2026-10-01）。來源標示：115年10月1日(含)起停止受理,印刷品請協助下架並妥善收存。僅為搜尋提示；未核對現售狀態、條款版本或給付內容。",
       "dataQuality": "needsReview",
       "benefits": [],
+      "productCode": "UBVA3",
       "salesEnd": "2026-10-01T00:00:00Z"
     },
     {
@@ -4850,15 +4852,16 @@
       "productCode": "HRLTC3"
     },
     {
-      "id": "206-4eabd99ae3",
+      "id": "206-3a218e816f",
       "company": "南山人壽保險股份有限公司",
       "companyCode": "206",
-      "name": "南山人壽好安定住院暨在宅急症照護一年期健康保險 (1HHI)【組合文宣／輔銷工具】（8個文宣條目）",
+      "name": "南山人壽好安定住院暨在宅急症照護一年期健康保險 (1HHI)",
       "line": "壽險",
       "salesStatus": "未確認",
       "provenance": "使用者提供名稱清單：南山商品簡介暨行銷文宣一覽表（文宣品號 PA479，製表 2026-10-01）。僅為搜尋提示；未核對現售狀態、條款版本或給付內容。",
       "dataQuality": "needsReview",
-      "benefits": []
+      "benefits": [],
+      "productCode": "1HHI"
     },
     {
       "id": "216-19bab0d407",
