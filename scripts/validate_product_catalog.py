@@ -81,12 +81,21 @@ def validate(path: Path):
         errors.append("non-empty product catalog requires source.url")
     if products and not source.get("rightsStatus"):
         errors.append("non-empty product catalog requires source.rightsStatus")
-    if products and source.get("rightsStatus") not in {"authorized", "public_open_license"}:
-        errors.append("product records cannot be bundled until redistribution rights are recorded")
-    if products and not is_https(source.get("rightsEvidenceURL")):
-        errors.append("non-empty product catalog requires HTTPS rightsEvidenceURL")
-    if products and not source.get("rightsCheckedOn"):
-        errors.append("non-empty product catalog requires rightsCheckedOn")
+    if products and source.get("rightsStatus") == "user_supplied_names_only":
+        # 僅名稱的搜尋提示：不得含條款、給付或「已核驗」資料
+        for index, product in enumerate(products):
+            prefix = f"products[{index}]"
+            if product["dataQuality"] not in {"needsReview", "unavailable"}:
+                errors.append(f"{prefix} name-only import must be needsReview/unavailable")
+            if product.get("clauseURL") or product.get("clauseVersion") or product["benefits"]:
+                errors.append(f"{prefix} name-only import cannot carry clause or benefit data")
+    elif products:
+        if source.get("rightsStatus") not in {"authorized", "public_open_license"}:
+            errors.append("product records cannot be bundled until redistribution rights are recorded")
+        if not is_https(source.get("rightsEvidenceURL")):
+            errors.append("non-empty product catalog requires HTTPS rightsEvidenceURL")
+        if not source.get("rightsCheckedOn"):
+            errors.append("non-empty product catalog requires rightsCheckedOn")
 
     return payload, errors
 

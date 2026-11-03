@@ -75,7 +75,7 @@ struct CatalogView: View {
         NavigationStack {
             List {
                 Section("資料來源與涵蓋狀態") {
-                    Label("目前商品條款紀錄：\(snapshot.products.count) 筆", systemImage: "books.vertical")
+                    Label("商品名稱紀錄：\(snapshot.products.count) 筆（尚無條款全文）", systemImage: "books.vertical")
                     Text("公司代碼索引擷取日：\(snapshot.fetchedOn)。下拉名單包含歷史、合併前或持照狀態待確認公司，不等同現行持照名錄。")
                         .font(.footnote).foregroundStyle(.secondary)
                     Text(snapshot.source.notes)
