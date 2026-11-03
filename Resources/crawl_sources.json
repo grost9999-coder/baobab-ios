@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "userAgent": "BaobabPublicCatalogResearch/1.0",
+  "minDelaySeconds": 3,
+  "maxHtmlBytes": 3000000,
+  "seeds": [
+    {
+      "sourceId": "tii-public-product-index",
+      "companyCode": null,
+      "companyName": "財團法人保險事業發展中心",
+      "line": "index",
+      "sourceMode": "public_index",
+      "url": "https://insprod.tii.org.tw/Query.aspx",
+      "sameHostPathPrefixes": ["/"],
+      "maxPages": 1,
+      "historicalCandidate": true,
+      "notes": "逐筆查詢表含驗證碼；只讀取公開頁面並記錄可見欄位，遇驗證碼或需提交表單立即停止。不得自動提交查詢、繞過驗證或呼叫未公開端點。資料庫公開說明指始於2004年底，不涵蓋所有更早商品。"
+    },
+    {
+      "sourceId": "taiwanlife-public-products",
+      "companyCode": "202",
+      "companyName": "台灣人壽保險股份有限公司",
+      "line": "壽險",
+      "sourceMode": "official_company_site",
+      "url": "https://www.taiwanlife.com/AboutUs-public-info-info-insurance",
+      "sameHostPathPrefixes": ["/AboutUs-public-info", "/html/older/"],
+      "maxPages": 5,
+      "historicalCandidate": false,
+      "notes": "使用官方 robots.txt 允許的公開頁面。只蒐集商品索引、頁面標題、官方文件連結及來源時間，不下載條款 PDF。"
+    },
+    {
+      "sourceId": "taiwan-fire-marine-public-products",
+      "companyCode": "101",
+      "companyName": "臺灣產物保險股份有限公司",
+      "line": "產險",
+      "sourceMode": "official_company_site",
+      "url": "https://www.tfmi.com.tw/investors-Product-Terms",
+      "sameHostPathPrefixes": ["/investors-Product-Terms"],
+      "maxPages": 1,
+      "historicalCandidate": false,
+      "notes": "官方 robots.txt 未列禁止路徑。若內容由 JavaScript 載入、遇到驗證碼或權限障礙，不使用瀏覽器指紋偽裝、Cookie 取得或其他繞過方式。"
+    },
+    {
+      "sourceId": "first-insurance-public-clause-index",
+      "companyCode": "110",
+      "companyName": "第一產物保險股份有限公司",
+      "line": "產險",
+      "sourceMode": "historical_candidate_index",
+      "url": "https://www.firstins.com.tw/insurance/mortorclause",
+      "sameHostPathPrefixes": ["/insurance/"],
+      "maxPages": 1,
+      "historicalCandidate": true,
+      "notes": "官方條款索引可見多項條款文件連結，但頁面不一定標示歷史版次。robots.txt 未能在目前檢查中取得可解析規則，故爬蟲須 fail-closed 並跳過，不代表允許抓取。"
+    }
+  ]
+}

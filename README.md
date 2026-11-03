@@ -19,6 +19,10 @@ The TII search page supports company/type/product keyword and sales/stop-sale da
 
 A separate `Insurance` repository in the same account contains a 3,324-row export spanning only eight life insurers. Those entries have basic names/status/year but no product codes, clause text, clause links, or source lineage. The export is not included as verified production data and must not be used for claim calculations.
 
+## Safe crawler prototype
+
+The read-only crawler checks robots.txt first and stops on CAPTCHA, access interstitials, non-plain robots responses, or HTTP blocking. It does not submit forms, follow redirects, download clause files, or import candidate links as products. Run it with `python3 scripts/crawl_public_catalog_sources.py`; it is source discovery only, not a full-catalog importer. Five safety tests pass with `python3 -m unittest discover -s tests -v`. The first official-source pilot found that some public pages expose only navigation/JavaScript-loaded content, while TII robots.txt and one insurer site's access response require stopping rather than bypassing. See [`docs/crawler-pilot-2026-11-03.md`](docs/crawler-pilot-2026-11-03.md).
+
 ## Build
 
 Open `Baobab.xcodeproj` in Xcode 15 or later and run on iOS 17+. The source uses SwiftUI, PhotosUI, UIKit camera picker, and on-device Vision OCR. This coding environment does not include Xcode or an iOS SDK, so a simulator/device build has not been run here.
@@ -31,3 +35,4 @@ Open `Baobab.xcodeproj` in Xcode 15 or later and run on iOS 17+. The source uses
 - Product data schema and verification rules: [`docs/product-data-schema.md`](docs/product-data-schema.md)
 - Three-track data acquisition plan and unsent request drafts: [`docs/data-acquisition-plan-and-requests.md`](docs/data-acquisition-plan-and-requests.md)
 - Catalog format checker: `python3 scripts/validate_product_catalog.py`
+- Crawler source settings: `Resources/crawl_sources.json`
