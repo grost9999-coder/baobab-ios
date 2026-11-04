@@ -59,7 +59,10 @@ struct CatalogView: View {
             let matchesStatus = selectedStatus == "全部" || product.salesStatus.rawValue == selectedStatus
             let matchesText = searchText.isEmpty || product.name.localizedCaseInsensitiveContains(searchText) ||
                 product.company.localizedCaseInsensitiveContains(searchText) ||
-                (product.productCode?.localizedCaseInsensitiveContains(searchText) ?? false)
+                product.line.localizedCaseInsensitiveContains(searchText) ||
+                (product.companyCode?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (product.productCode?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (product.clauseVersion?.localizedCaseInsensitiveContains(searchText) ?? false)
             return matchesStatus && matchesText
         }
     }
@@ -94,17 +97,21 @@ struct CatalogView: View {
                         )
                     } else {
                         ForEach(visibleProducts) { product in
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(product.name).font(.headline)
-                                Text("\(product.company) · \(product.salesStatus.rawValue) · \(product.line)")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                Text(product.isEstimateEligible ? "條款來源已核驗" : "條款未核驗，不可用於試算")
-                                    .font(.caption).foregroundStyle(product.isEstimateEligible ? .green : .orange)
-                                if let url = product.clauseURL {
-                                    Link("查看條款原文", destination: url).font(.caption)
+                            NavigationLink {
+                                ProductDetailView(product: product)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(product.name).font(.headline)
+                                    Text("\(product.company) · \(product.salesStatus.rawValue) · \(product.line)")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                    Text(product.isEstimateEligible ? "條款來源已核驗" : "條款未核驗，不可用於試算")
+                                        .font(.caption).foregroundStyle(product.isEstimateEligible ? .green : .orange)
+                                    if let version = product.clauseVersion {
+                                        Text("條款版本：\(version)").font(.caption).foregroundStyle(.secondary)
+                                    }
                                 }
+                                .padding(.vertical, 3)
                             }
-                            .padding(.vertical, 3)
                         }
                     }
                 }
@@ -134,5 +141,92 @@ struct CatalogView: View {
                 .background(.bar)
             }
         }
+    }
+}
+
+
+private struct ProductDetailView: View {
+    let product: InsuranceProduct
+
+    private var qualityLabel: String {
+        return switch product.dataQuality {
+        case .verified: "已核驗"
+        case .needsReview: "待人工核對"
+        case .demo: "示範資料"
+        case .unavailable: "資料不可用"
+        }
+    }
+
+    var body: some View {
+        List {
+            Section("商品識別") {
+                LabeledContent("保險公司", value: product.company)
+                if let companyCode = product.companyCode { LabeledContent("公司代碼", value: companyCode) }
+                LabeledContent("商品名稱", value: product.name)
+                if let productCode = product.productCode { LabeledContent("商品代碼", value: productCode) }
+                LabeledContent("險種", value: product.line)
+                LabeledContent("銷售狀態", value: product.salesStatus.rawValue)
+                LabeledContent("資料品質", value: qualityLabel)
+            }
+            Section("銷售期間與來源時間") {
+                if let start = product.effectiveFrom {
+                    LabeledContent("開始/生效", value: start.formatted(date: .abbreviated, time: .omitted))
+                } else {
+                    LabeledContent("開始/生效", value: "未提供")
+                }
+                if let end = product.salesEnd {
+                    LabeledContent("停售日", value: end.formatted(date: .abbreviated, time: .omitted))
+                } else {
+                    LabeledContent("停售日", value: product.salesStatus == .onSale ? "未提供" : "未確認")
+                }
+                if let retrieved = product.sourceRetrievedAt {
+                    LabeledContent("來源擷取日", value: retrieved.formatted(date: .abbreviated, time: .omitted))
+                }
+            }
+            Section("條款版本與核驗") {
+                LabeledContent("條款版本", value: product.clauseVersion ?? "未提供")
+                if let verifiedAt = product.clauseVerifiedAt {
+                    LabeledContent("核驗日期", value: verifiedAt.formatted(date: .abbreviated, time: .omitted))
+                } else {
+                    Text("未提供可追溯核驗日期；此商品不可用於理賠試算。")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
+                if let clauseURL = product.clauseURL {
+                    Link("開啟條款原文", destination: clauseURL)
+                }
+                if let sourceURL = product.sourceURL {
+                    Link("開啟商品資料來源", destination: sourceURL)
+                }
+                Text("查詢結果或停售狀態不會取代個人保單所載的契約版本；理賠須依保單生效時適用條款核對。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Section("給付項目") {
+                if product.benefits.isEmpty {
+                    Text("尚未整理或核驗給付明細；不可從商品名稱推定保障。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    ForEach(product.benefits) { benefit in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(benefit.kind.rawValue) · \(benefit.label)").font(.subheadline.bold())
+                            if let amount = benefit.amountNTD {
+                                Text("金額：NT$\(amount.formatted())")
+                            }
+                            if let maxDays = benefit.maxDays {
+                                Text("天數上限：\(maxDays) 日")
+                            }
+                            if let reference = benefit.clauseReference {
+                                Text("條款依據：\(reference)")
+                            }
+                            Text(benefit.verifiedEligible ? "此項已標記核對" : "此項尚未核對")
+                                .font(.caption).foregroundStyle(benefit.verifiedEligible ? .secondary : .orange)
+                        }
+                        .font(.footnote)
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle("商品條款明細")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

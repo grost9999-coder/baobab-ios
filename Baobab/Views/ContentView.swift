@@ -7,7 +7,7 @@ struct ContentView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var capturedImage: UIImage?
     @State private var showCamera = false
-    @State private var showPolicyEditor = false
+    @State private var policyEditorRoute: PolicyEditorRoute?
     @State private var ocrText = ""
     @State private var ocrBusy = false
     @State private var eventDate = Date()
@@ -22,12 +22,17 @@ struct ContentView: View {
             return ClaimEstimate(minimumKnownNTD: 0, includedItems: [], excludedItems: ["保單資料本機儲存狀態異常，暫停試算。"])
         }
         let amounts = surgeryAmounts.compactMapValues { Int($0) }
-        return ClaimEstimator.estimate(
+        var result = ClaimEstimator.estimate(
             input: ClaimInput(eventDate: eventDate, hospitalDays: hospitalDays, surgeryName: surgeryName, outpatientSurgery: outpatientSurgery),
             policies: store.policies,
             surgeryAmounts: amounts,
             confirmedSurgeryPolicies: confirmedSurgeryPolicies
         )
+        let invalidCount = surgeryAmounts.values.filter { !$0.isEmpty && Int($0) == nil }.count
+        if invalidCount > 0 {
+            result.excludedItems.insert("有 \(invalidCount) 筆手術金額不是有效整數，未納入；請重新輸入。", at: 0)
+        }
+        return result
     }
 
     var body: some View {
@@ -43,8 +48,13 @@ struct ContentView: View {
             claimTab
                 .tabItem { Label("理賠試算", systemImage: "function") }
         }
-        .sheet(isPresented: $showPolicyEditor, onDismiss: { ocrText = "" }) {
-            PolicyEditorView(ocrDraft: ocrText) { store.add($0) }
+        .sheet(item: $policyEditorRoute, onDismiss: { ocrText = "" }) { route in
+            switch route {
+            case .new(let draft):
+                PolicyEditorView(ocrDraft: draft) { store.add($0) }
+            case .edit(let policy):
+                PolicyEditorView(existingPolicy: policy) { store.update($0) }
+            }
         }
     }
 
@@ -59,7 +69,9 @@ struct ContentView: View {
                         ContentUnavailableView("尚未建立保單", systemImage: "doc.text.viewfinder", description: Text("拍攝保單頁面或手動輸入，建立第一筆保單。"))
                     } else {
                         ForEach(store.policies) { policy in
-                            policyRow(policy)
+                            Button { policyEditorRoute = .edit(policy) } label: { policyRow(policy) }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("點選以編輯這張保單資料")
                                 .swipeActions {
                                     Button("刪除", systemImage: "trash", role: .destructive) { store.remove(policy) }
                                 }
@@ -75,7 +87,7 @@ struct ContentView: View {
             .navigationTitle("保單總覽")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { ocrText = ""; showPolicyEditor = true } label: { Label("新增保單", systemImage: "plus") }
+                        Button { ocrText = ""; policyEditorRoute = .new(ocrDraft: "") } label: { Label("新增保單", systemImage: "plus") }
                 }
             }
         }
@@ -110,13 +122,13 @@ struct ContentView: View {
                         TextEditor(text: $ocrText).frame(minHeight: 180)
                         Text("OCR 可能誤讀公司名稱、保額或條號。建立保單前請逐項核對；辨識原文不會被保存。")
                             .font(.footnote).foregroundStyle(.secondary)
-                        Button { showPolicyEditor = true } label: {
+                        Button { policyEditorRoute = .new(ocrDraft: ocrText) } label: {
                             Label("核對欄位並建立保單", systemImage: "doc.badge.plus")
                         }
                     }
                 }
                 Section("未辨識或照片不清楚？") {
-                    Button { ocrText = ""; showPolicyEditor = true } label: {
+                    Button { ocrText = ""; policyEditorRoute = .new(ocrDraft: "") } label: {
                         Label("改為手動輸入", systemImage: "square.and.pencil")
                     }
                 }
@@ -148,6 +160,31 @@ struct ContentView: View {
                         }
                         .padding(.vertical, 3)
                     }
+                }
+                Section("保單資料待補") {
+                    if store.policies.isEmpty {
+                        Text("建立保單後，這裡會提醒尚未記錄的生效日、保障類別或條款來源。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        let incomplete = store.policies.filter { !missingPolicyFields($0).isEmpty }
+                        if incomplete.isEmpty {
+                            Text("目前已填寫基本欄位；仍請以保單原件核對條款與保障內容。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            ForEach(incomplete) { policy in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("\(policy.insurer)／\(policy.productName)").font(.subheadline.bold())
+                                    Text("尚未記錄：\(missingPolicyFields(policy).joined(separator: "、"))")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                    Button("編輯並補充") { policyEditorRoute = .edit(policy) }
+                                        .font(.footnote)
+                                }
+                                .padding(.vertical, 3)
+                            }
+                        }
+                    }
+                    Text("這些是資料完整度提示，不是保障缺口判定。")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("如何解讀") {
                     Text("這是依你自行建檔的保障清單所做的整理，不會判斷適不適合、保額是否足夠，也不會把「未找到」當成確定缺口。")
@@ -220,6 +257,17 @@ struct ContentView: View {
         }
     }
 
+    private func missingPolicyFields(_ policy: UserPolicy) -> [String] {
+        var missing: [String] = []
+        if policy.startDate == nil { missing.append("生效日") }
+        if policy.categories.isEmpty { missing.append("保障類別") }
+        if policy.clauseVersion?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { missing.append("條款版本") }
+        if policy.clauseReference?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { missing.append("條號/頁碼") }
+        if policy.clauseURL?.scheme?.lowercased() != "https" { missing.append("官方條款來源") }
+        if policy.benefits.isEmpty { missing.append("給付項目") }
+        return missing
+    }
+
     private func amountBinding(for policy: UserPolicy) -> Binding<String> {
         Binding(get: { surgeryAmounts[policy.id, default: ""] }, set: { surgeryAmounts[policy.id] = $0 })
     }
@@ -238,6 +286,18 @@ struct ContentView: View {
         ocrText = (try? await PolicyPhotoOCR.recognize(image)) ?? "無法辨識，請手動輸入保單資料。"
         capturedImage = nil
         selectedPhoto = nil
+    }
+}
+
+private enum PolicyEditorRoute: Identifiable {
+    case new(ocrDraft: String)
+    case edit(UserPolicy)
+
+    var id: String {
+        return switch self {
+        case .new(_): "new-policy"
+        case .edit(let policy): policy.id.uuidString
+        }
     }
 }
 

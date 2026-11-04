@@ -21,6 +21,12 @@ final class PolicyStore: ObservableObject {
         save()
     }
 
+    func update(_ policy: UserPolicy) {
+        guard let index = policies.firstIndex(where: { $0.id == policy.id }) else { return }
+        policies[index] = policy
+        save()
+    }
+
     func remove(_ policy: UserPolicy) {
         policies.removeAll { $0.id == policy.id }
         save()

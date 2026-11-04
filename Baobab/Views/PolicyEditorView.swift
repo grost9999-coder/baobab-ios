@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct PolicyEditorView: View {
     let ocrDraft: String
+    let existingPolicy: UserPolicy?
     let onSave: (UserPolicy) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var insurer = ""
@@ -21,10 +22,39 @@ struct PolicyEditorView: View {
     @State private var clauseURL = ""
     @State private var verifiedByUser = false
 
+    init(ocrDraft: String = "", existingPolicy: UserPolicy? = nil, onSave: @escaping (UserPolicy) -> Void) {
+        self.ocrDraft = ocrDraft
+        self.existingPolicy = existingPolicy
+        self.onSave = onSave
+        _insurer = State(initialValue: existingPolicy?.insurer ?? "")
+        _productName = State(initialValue: existingPolicy?.productName ?? "")
+        _startDate = State(initialValue: existingPolicy?.startDate ?? Date())
+        _hasStartDate = State(initialValue: existingPolicy?.startDate != nil)
+        _endDate = State(initialValue: existingPolicy?.endDate ?? Date())
+        _hasEndDate = State(initialValue: existingPolicy?.endDate != nil)
+        _categories = State(initialValue: Set(existingPolicy?.categories ?? []))
+        let dailyAmount = existingPolicy?.benefits.first(where: { $0.kind == .inpatientDaily })?.amountNTD
+        _dailyBenefit = State(initialValue: dailyAmount.map { String($0) } ?? "")
+        _hasSurgeryBenefit = State(initialValue: existingPolicy?.benefits.contains(where: { $0.kind == .surgerySchedule }) ?? false)
+        _hasOutpatientBenefit = State(initialValue: existingPolicy?.benefits.contains(where: { $0.kind == .outpatientSurgery }) ?? false)
+        _hasActualExpense = State(initialValue: existingPolicy?.benefits.contains(where: { $0.kind == .actualExpense }) ?? false)
+        _clauseVersion = State(initialValue: existingPolicy?.clauseVersion ?? "")
+        _clauseReference = State(initialValue: existingPolicy?.clauseReference ?? "")
+        _clauseURL = State(initialValue: existingPolicy?.clauseURL?.absoluteString ?? "")
+        _verifiedByUser = State(initialValue: existingPolicy?.clauseIsVerified ?? false)
+    }
+
     private var traceable: Bool {
         verifiedByUser && !clauseVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !clauseReference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         URL(string: clauseURL)?.scheme?.lowercased() == "https"
+    }
+
+    private var ocrSuggestions: PolicyOCRSuggestions {
+        let companyNames = ProductCatalogStore.load().companies
+            .filter { $0.line == "壽險" || $0.line == "產險" }
+            .map(\.name)
+        return PolicyOCRDraftParser.parse(ocrDraft, knownCompanies: companyNames)
     }
 
     var body: some View {
@@ -36,6 +66,34 @@ struct PolicyEditorView: View {
                             .font(.footnote)
                             .textSelection(.enabled)
                         Text("辨識文字不會寫入保單檔案。請自行核對公司、商品名稱與保單內容。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Section("欄位候選，需自行核對後採用") {
+                        if let candidate = ocrSuggestions.insurer {
+                            Button("採用公司候選：\(candidate)") { insurer = candidate }
+                        }
+                        if let candidate = ocrSuggestions.productName {
+                            Button("採用商品名稱候選：\(candidate)") { productName = candidate }
+                        }
+                        if let candidate = ocrSuggestions.startDate {
+                            Button("採用生效日候選：\(candidate.formatted(date: .numeric, time: .omitted))") {
+                                startDate = candidate
+                                hasStartDate = true
+                            }
+                        }
+                        if let candidate = ocrSuggestions.dailyBenefit {
+                            Button("採入住院日額候選：NT$\(candidate.formatted())") { dailyBenefit = String(candidate) }
+                        }
+                        if !ocrSuggestions.categories.isEmpty {
+                            Button("套用保障類別候選（\(ocrSuggestions.categories.map(\.rawValue).joined(separator: "、"))）") {
+                                categories.formUnion(ocrSuggestions.categories)
+                            }
+                        }
+                        if !ocrSuggestions.hasSuggestions {
+                            Text("未找到帶有明確欄位標籤的候選值；請手動輸入，避免從不確定文字推斷保障。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text("候選僅由裝置端 OCR 文字比對而來；套用後仍需核對保單原文，不會自動標記為已核實。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -80,12 +138,12 @@ struct PolicyEditorView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("確認保單草稿")
+            .navigationTitle(existingPolicy == nil ? "確認保單草稿" : "編輯保單資料")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { save() }
+                    Button(existingPolicy == nil ? "儲存" : "更新") { save() }
                         .disabled(insurer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -100,20 +158,25 @@ struct PolicyEditorView: View {
 
     private func save() {
         let isVerified = traceable
-        var benefits: [PolicyBenefit] = []
+        var benefits = existingPolicy?.benefits.filter { $0.kind == .surgeryLumpSum || $0.kind == .other } ?? []
         if let daily = Int(dailyBenefit), daily > 0 {
-            benefits.append(PolicyBenefit(kind: .inpatientDaily, label: "住院日額", amountNTD: daily, maxDays: nil, clauseReference: clauseReference, verifiedEligible: isVerified))
+            let prior = existingPolicy?.benefits.first(where: { $0.kind == .inpatientDaily })
+            benefits.append(PolicyBenefit(kind: .inpatientDaily, label: prior?.label ?? "住院日額", amountNTD: daily, maxDays: prior?.maxDays, clauseReference: clauseReference, verifiedEligible: isVerified))
         }
         if hasSurgeryBenefit {
-            benefits.append(PolicyBenefit(kind: .surgerySchedule, label: "手術表給付", amountNTD: nil, maxDays: nil, clauseReference: clauseReference, verifiedEligible: isVerified))
+            let prior = existingPolicy?.benefits.first(where: { $0.kind == .surgerySchedule })
+            benefits.append(PolicyBenefit(kind: .surgerySchedule, label: prior?.label ?? "手術表給付", amountNTD: prior?.amountNTD, maxDays: prior?.maxDays, clauseReference: clauseReference, verifiedEligible: isVerified))
         }
         if hasOutpatientBenefit {
-            benefits.append(PolicyBenefit(kind: .outpatientSurgery, label: "門診手術", amountNTD: nil, maxDays: nil, clauseReference: clauseReference, verifiedEligible: isVerified))
+            let prior = existingPolicy?.benefits.first(where: { $0.kind == .outpatientSurgery })
+            benefits.append(PolicyBenefit(kind: .outpatientSurgery, label: prior?.label ?? "門診手術", amountNTD: prior?.amountNTD, maxDays: prior?.maxDays, clauseReference: clauseReference, verifiedEligible: isVerified))
         }
         if hasActualExpense {
-            benefits.append(PolicyBenefit(kind: .actualExpense, label: "實支實付", amountNTD: nil, maxDays: nil, clauseReference: clauseReference, verifiedEligible: isVerified))
+            let prior = existingPolicy?.benefits.first(where: { $0.kind == .actualExpense })
+            benefits.append(PolicyBenefit(kind: .actualExpense, label: prior?.label ?? "實支實付", amountNTD: prior?.amountNTD, maxDays: prior?.maxDays, clauseReference: clauseReference, verifiedEligible: isVerified))
         }
         let policy = UserPolicy(
+            id: existingPolicy?.id ?? UUID(),
             insurer: insurer.trimmingCharacters(in: .whitespacesAndNewlines),
             productName: productName.trimmingCharacters(in: .whitespacesAndNewlines),
             startDate: hasStartDate ? startDate : nil,
@@ -123,7 +186,7 @@ struct PolicyEditorView: View {
             clauseReference: clauseReference.isEmpty ? nil : clauseReference,
             clauseURL: URL(string: clauseURL),
             clauseVerifiedAt: isVerified ? Date() : nil,
-            source: ocrDraft.isEmpty ? .manuallyEntered : .photoDraft,
+            source: existingPolicy?.source ?? (ocrDraft.isEmpty ? .manuallyEntered : .photoDraft),
             benefits: benefits
         )
         onSave(policy)

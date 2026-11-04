@@ -9,6 +9,9 @@ enum ClaimEstimator {
         surgeryAmounts: [UUID: Int],
         confirmedSurgeryPolicies: Set<UUID>
     ) -> ClaimEstimate {
+        guard (0...365).contains(input.hospitalDays) else {
+            return ClaimEstimate(minimumKnownNTD: 0, includedItems: [], excludedItems: ["住院天數輸入超出可試算範圍（0–365 天），未提供金額。"])
+        }
         var total = 0
         var included: [String] = []
         var excluded: [String] = []
@@ -34,8 +37,17 @@ enum ClaimEstimator {
                     let allowedDays = max(benefit.maxDays ?? input.hospitalDays, 0)
                     let days = min(input.hospitalDays, allowedDays)
                     guard days > 0 else { continue }
-                    let amount = days * dailyAmount
-                    total += amount
+                    let (amount, multiplicationOverflow) = days.multipliedReportingOverflow(by: dailyAmount)
+                    guard !multiplicationOverflow else {
+                        excluded.append("\(policy.insurer)／\(policy.productName)：住院日額乘算超出安全範圍，未納入")
+                        continue
+                    }
+                    let (newTotal, additionOverflow) = total.addingReportingOverflow(amount)
+                    guard !additionOverflow else {
+                        excluded.append("\(policy.insurer)／\(policy.productName)：累計金額超出安全範圍，該項未納入")
+                        continue
+                    }
+                    total = newTotal
                     included.append("\(policy.insurer)／\(policy.productName)－\(benefit.label)：\(days) 日 × NT$\(dailyAmount) = NT$\(amount)")
                 }
             }
@@ -44,23 +56,24 @@ enum ClaimEstimator {
             let hasApplicableVerifiedBenefit = policy.benefits.contains {
                 $0.kind == requiredBenefit && $0.verifiedEligible
             }
-            if let amount = surgeryAmounts[policy.id], amount > 0 {
-                guard !input.surgeryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if let amount = surgeryAmounts[policy.id], amount != 0 {
+                if amount < 0 {
+                    excluded.append("\(policy.insurer)／\(policy.productName)：手術金額不能為負數，未納入")
+                } else if input.surgeryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     excluded.append("\(policy.insurer)／\(policy.productName)：尚未輸入本次手術項目，未納入手術給付")
-                    continue
-                }
-                guard amount <= maximumSingleBenefitNTD else {
+                } else if amount > maximumSingleBenefitNTD {
                     excluded.append("\(policy.insurer)／\(policy.productName)：輸入金額超出試算上限，未納入")
-                    continue
-                }
-                guard hasApplicableVerifiedBenefit else {
+                } else if !hasApplicableVerifiedBenefit {
                     excluded.append("\(policy.insurer)／\(policy.productName)：未記錄符合本次類型的已核對手術給付項目，未納入")
-                    continue
-                }
-                if confirmedSurgeryPolicies.contains(policy.id) {
-                    total += amount
-                    let event = input.outpatientSurgery ? "門診手術" : "手術"
-                    included.append("\(policy.insurer)／\(policy.productName)－\(event)（\(input.surgeryName)）：依你核對的該保單條款金額 NT$\(amount)")
+                } else if confirmedSurgeryPolicies.contains(policy.id) {
+                    let (newTotal, additionOverflow) = total.addingReportingOverflow(amount)
+                    if additionOverflow {
+                        excluded.append("\(policy.insurer)／\(policy.productName)：累計金額超出安全範圍，手術項目未納入")
+                    } else {
+                        total = newTotal
+                        let event = input.outpatientSurgery ? "門診手術" : "手術"
+                        included.append("\(policy.insurer)／\(policy.productName)－\(event)（\(input.surgeryName)）：依你核對的該保單條款金額 NT$\(amount)")
+                    }
                 } else {
                     excluded.append("\(policy.insurer)／\(policy.productName)：手術金額已輸入，但尚未確認對應條款/手術表項目")
                 }
