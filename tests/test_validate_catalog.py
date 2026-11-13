@@ -61,5 +61,18 @@ class ValidatorTests(unittest.TestCase):
         self.assertTrue(self.run_validator(payload))
 
 
+    def test_index_links_only_accepts_name_dates_and_official_link(self):
+        payload = catalog([product(sourceURL="https://www.example-insurer.com.tw/products/1", role="附約")])
+        payload["source"]["rightsStatus"] = "index_links_only"
+        self.assertEqual(self.run_validator(payload), [])
+
+    def test_index_links_only_rejects_benefits_and_missing_link(self):
+        payload = catalog([product(benefits=[{"kind": "住院日額", "label": "x", "verifiedEligible": False}])])
+        payload["source"]["rightsStatus"] = "index_links_only"
+        errors = self.run_validator(payload)
+        self.assertTrue(any("benefit details" in e for e in errors))
+        self.assertTrue(any("sourceURL" in e for e in errors))
+
+
 if __name__ == "__main__":
     unittest.main()

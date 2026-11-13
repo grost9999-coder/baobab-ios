@@ -93,8 +93,18 @@ def validate(path: Path):
         errors.append("non-empty product catalog requires source.url")
     if products and not source.get("rightsStatus"):
         errors.append("non-empty product catalog requires source.rightsStatus")
-    if products and source.get("rightsStatus") not in {"authorized", "public_open_license"}:
+    if products and source.get("rightsStatus") not in {"authorized", "public_open_license", "index_links_only"}:
         errors.append("product records cannot be bundled until redistribution rights are recorded")
+    if products and source.get("rightsStatus") == "index_links_only":
+        # 索引模式：只收商品名稱、銷售期間與連到公司官網的連結，不收條款全文或給付內容。
+        for index, product in enumerate(products):
+            prefix = f"products[{index}]"
+            if product.get("benefits"):
+                errors.append(f"{prefix} index_links_only catalogs must not carry benefit details")
+            if product.get("dataQuality") == "verified":
+                errors.append(f"{prefix} index_links_only records cannot be dataQuality=verified")
+            if not is_https(product.get("sourceURL")):
+                errors.append(f"{prefix} index_links_only records require an HTTPS sourceURL to the official page")
     if products and not is_https(source.get("rightsEvidenceURL")):
         errors.append("non-empty product catalog requires HTTPS rightsEvidenceURL")
     if products and not source.get("rightsCheckedOn"):

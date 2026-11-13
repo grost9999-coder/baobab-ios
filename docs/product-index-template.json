@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "fetchedOn": "2026-11-13",
+  "dataStatus": "index_links_only",
+  "source": {
+    "name": "各保險公司官網商品專區（索引）",
+    "url": "https://insprod.tii.org.tw/Query.aspx",
+    "notes": "只收錄商品名稱、主附約、銷售期間與官網連結；不含條款全文與給付內容。",
+    "rightsStatus": "index_links_only",
+    "rightsEvidenceURL": "https://（該公司網站使用條款或商品公開說明頁）",
+    "rightsCheckedOn": "2026-11-13"
+  },
+  "companies": [
+    {"code": "206", "name": "南山人壽保險股份有限公司", "line": "壽險", "rosterStatus": "待金管會現行名錄核對"}
+  ],
+  "products": [
+    {
+      "id": "206-範例-001",
+      "company": "南山人壽保險股份有限公司",
+      "companyCode": "206",
+      "name": "（商品名稱照官網原文）",
+      "line": "壽險",
+      "role": "附約",
+      "salesStatus": "停售",
+      "effectiveFrom": "2015-01-01T00:00:00Z",
+      "salesEnd": "2020-06-30T00:00:00Z",
+      "sourceURL": "https://（公司官網該商品頁）",
+      "sourceRetrievedAt": "2026-11-13T00:00:00Z",
+      "provenance": "公司官網商品專區，人工逐筆核對",
+      "dataQuality": "needsReview",
+      "benefits": []
+    }
+  ]
+}

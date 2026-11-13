@@ -31,13 +31,15 @@ enum CatalogImportError: LocalizedError {
     case tooLarge
     case undecodable
     case rightsNotRecorded
+    case indexOnlyViolation
     case unknownCompany(String)
 
     var errorDescription: String? {
         switch self {
         case .tooLarge: return "檔案超過 50 MB，未匯入。"
         case .undecodable: return "檔案格式不符合商品目錄 schema，未匯入。"
-        case .rightsNotRecorded: return "目錄缺少授權記錄（rightsStatus 須為 authorized 或 public_open_license，並附 HTTPS rightsEvidenceURL 與 rightsCheckedOn），未匯入。"
+        case .rightsNotRecorded: return "目錄缺少授權記錄（rightsStatus 須為 authorized、public_open_license 或 index_links_only，並附 HTTPS rightsEvidenceURL 與 rightsCheckedOn），未匯入。"
+        case .indexOnlyViolation: return "索引模式（index_links_only）的商品不得含給付內容或 verified 標記，且每筆須附 HTTPS 官網連結，未匯入。"
         case .unknownCompany(let code): return "有商品引用未知公司代碼 \(code)，未匯入。"
         }
     }
@@ -88,10 +90,17 @@ enum ProductCatalogStore {
         guard data.count <= 50_000_000 else { throw CatalogImportError.tooLarge }
         guard let snapshot = try? decoder.decode(ProductCatalogSnapshot.self, from: data) else { throw CatalogImportError.undecodable }
 
-        let rightsOK = ["authorized", "public_open_license"].contains(snapshot.source.rightsStatus ?? "")
+        let rightsOK = ["authorized", "public_open_license", "index_links_only"].contains(snapshot.source.rightsStatus ?? "")
             && snapshot.source.rightsEvidenceURL?.scheme?.lowercased() == "https"
             && !(snapshot.source.rightsCheckedOn ?? "").isEmpty
         guard rightsOK else { throw CatalogImportError.rightsNotRecorded }
+        if snapshot.source.rightsStatus == "index_links_only" {
+            for product in snapshot.products {
+                guard product.benefits.isEmpty, product.dataQuality != .verified, product.sourceURL?.scheme?.lowercased() == "https" else {
+                    throw CatalogImportError.indexOnlyViolation
+                }
+            }
+        }
 
         let knownCodes = Set(loadBundled().companies.map(\.code)).union(snapshot.companies.map(\.code))
         for product in snapshot.products {
@@ -386,7 +395,7 @@ struct ProductDetailView: View {
                     Link("網頁搜尋條款：\(product.name)", destination: ClauseLinks.webSearch(company: product.company, product: product.name))
                 }
                 if let sourceURL = product.sourceURL {
-                    Link("開啟商品資料來源", destination: sourceURL)
+                    Link("開啟公司官網商品頁", destination: sourceURL)
                 }
                 Text("查詢結果或停售狀態不會取代個人保單所載的契約版本；理賠須依保單生效時適用條款核對。")
                     .font(.footnote).foregroundStyle(.secondary)

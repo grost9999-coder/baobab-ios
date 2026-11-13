@@ -29,6 +29,10 @@ App 的搜尋、自動完成與條款連結都已完成，**資料量取決於 `
 
 每筆商品可帶 `role`（主約／附約／未確認）；給付項目 `kind` 可用：住院日額、手術定額、手術表定額、門診手術、實支實付、一般身故、意外身故、意外住院日額、骨折未住院、其他，並可用 `limitMinNTD`／`limitMaxNTD` 記錄條款可投保範圍。
 
+### 索引模式（只收名稱、銷售期間與官網連結）
+
+不收條款全文時，在目錄 `source.rightsStatus` 填 `index_links_only`：每筆商品只帶名稱、`role`、`salesStatus`、`effectiveFrom`/`salesEnd` 與指向公司官網的 HTTPS `sourceURL`，`benefits` 必須為空且不得標 verified。仍須附 `rightsEvidenceURL`（該公司網站使用條款或公開說明頁）與 `rightsCheckedOn`。範本見 [`docs/product-index-template.json`](docs/product-index-template.json)，可用 `python3 scripts/validate_product_catalog.py docs/product-index-template.json` 檢查。資料須逐家人工從官網核對，不得繞過驗證碼或大量擷取保發中心資料庫。
+
 ## Safe crawler prototype
 
 The read-only crawler checks robots.txt first and stops on CAPTCHA, access interstitials, non-plain robots responses, or HTTP blocking. It does not submit forms, follow redirects, download clause files, or import candidate links as products. Run it with `python3 scripts/crawl_public_catalog_sources.py`; it is source discovery only, not a full-catalog importer. Nine tests (five crawler safety tests, four catalog validator tests) pass with `python3 -m unittest discover -s tests -v`. The first official-source pilot found that some public pages expose only navigation/JavaScript-loaded content, while TII robots.txt and one insurer site's access response require stopping rather than bypassing. See [`docs/crawler-pilot-2026-11-03.md`](docs/crawler-pilot-2026-11-03.md).
