@@ -6,12 +6,12 @@
 
 ## 商品紀錄必要欄位
 
-- `insurer_id`, `insurer_name`, `line_of_business`（壽險/產險）、`product_code`, `product_name`, `rider_or_base`
+- `insurer_id`, `insurer_name`, `line_of_business`（壽險/產險）、`product_code`, `product_name`, `role`（主約/附約/未確認，對應 App 的 `role` 欄位）
 - `sales_status`（on_sale/discontinued/unknown）、`sales_start`, `sales_end`, `status_checked_at`
 - `clause_version`, `clause_effective_date`, `clause_document_url`, `clause_sha256`
 - `source_url`, `source_publisher`, `retrieved_at`, `source_document_date`
 - `verification_status`（unreviewed/verified/conflicted/unavailable）、`verified_at`, `review_notes`
-- 給付項目：給付類型、觸發條件、金額/公式、限額、等待期、除外責任、手術表/代碼、條款章節及原文頁碼
+- 給付項目：給付類型（住院日額、手術定額、手術表定額、門診手術、實支實付、一般身故、意外身故、意外住院日額、骨折未住院、其他）、觸發條件、金額/公式、限額、條款可投保上下限（`limitMinNTD`/`limitMaxNTD`）、等待期、除外責任、手術表/代碼、條款章節及原文頁碼
 
 缺少必要版本、條款文件、來源或核對日期時，資料只能用於搜尋提示，不可用於理賠估算。
 

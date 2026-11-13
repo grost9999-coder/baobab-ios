@@ -8,7 +8,11 @@ from urllib.parse import urlparse
 
 ALLOWED_STATUS = {"現售", "停售", "未確認"}
 ALLOWED_QUALITY = {"verified", "needsReview", "demo", "unavailable"}
-ALLOWED_BENEFIT_KINDS = {"住院日額", "手術定額", "手術表定額", "門診手術", "實支實付", "其他"}
+ALLOWED_ROLES = {"主約", "附約", "未確認"}
+ALLOWED_BENEFIT_KINDS = {
+    "住院日額", "手術定額", "手術表定額", "門診手術", "實支實付",
+    "一般身故", "意外身故", "意外住院日額", "骨折未住院", "其他",
+}
 REQUIRED_PRODUCT_KEYS = {
     "id", "company", "companyCode", "name", "line", "salesStatus", "provenance", "dataQuality", "benefits"
 }
@@ -48,6 +52,8 @@ def validate(path: Path):
         product_ids.add(product["id"])
         if str(product["companyCode"]) not in company_codes:
             errors.append(f"{prefix} references unknown companyCode {product['companyCode']}")
+        if product.get("role") is not None and product["role"] not in ALLOWED_ROLES:
+            errors.append(f"{prefix} invalid role {product['role']}")
         if product["salesStatus"] not in ALLOWED_STATUS:
             errors.append(f"{prefix} invalid salesStatus {product['salesStatus']}")
         if product["dataQuality"] not in ALLOWED_QUALITY:
@@ -58,6 +64,12 @@ def validate(path: Path):
             for bindex, benefit in enumerate(product["benefits"]):
                 if benefit.get("kind") not in ALLOWED_BENEFIT_KINDS:
                     errors.append(f"{prefix}.benefits[{bindex}] invalid kind")
+                low, high = benefit.get("limitMinNTD"), benefit.get("limitMaxNTD")
+                for key, value in (("limitMinNTD", low), ("limitMaxNTD", high)):
+                    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+                        errors.append(f"{prefix}.benefits[{bindex}].{key} must be a positive integer")
+                if isinstance(low, int) and isinstance(high, int) and low > high:
+                    errors.append(f"{prefix}.benefits[{bindex}] limitMinNTD exceeds limitMaxNTD")
                 if benefit.get("verifiedEligible") and product["dataQuality"] != "verified":
                     errors.append(f"{prefix}.benefits[{bindex}] verifiedEligible requires dataQuality=verified")
         if product["dataQuality"] == "verified":

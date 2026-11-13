@@ -15,11 +15,9 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
-	<string>拍攝保單頁面並在裝置上辨識文字，建立待確認草稿。</string>
+	<string>拍攝保單頁面或醫囑並在裝置上辨識文字，建立待確認草稿；照片不會上傳或保存。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>選取保單照片，在裝置上辨識文字並建立待確認草稿。</string>
+	<string>選取保單或醫囑照片，在裝置上辨識文字並建立待確認草稿；照片不會上傳或保存。</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

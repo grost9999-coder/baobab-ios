@@ -10,30 +10,6 @@ struct ContentView: View {
     @State private var policyEditorRoute: PolicyEditorRoute?
     @State private var ocrText = ""
     @State private var ocrBusy = false
-    @State private var eventDate = Date()
-    @State private var hospitalDays = 0
-    @State private var surgeryName = ""
-    @State private var outpatientSurgery = false
-    @State private var surgeryAmounts: [UUID: String] = [:]
-    @State private var confirmedSurgeryPolicies: Set<UUID> = []
-
-    private var estimate: ClaimEstimate {
-        if store.storageMessage != nil {
-            return ClaimEstimate(minimumKnownNTD: 0, includedItems: [], excludedItems: ["保單資料本機儲存狀態異常，暫停試算。"])
-        }
-        let amounts = surgeryAmounts.compactMapValues { Int($0) }
-        var result = ClaimEstimator.estimate(
-            input: ClaimInput(eventDate: eventDate, hospitalDays: hospitalDays, surgeryName: surgeryName, outpatientSurgery: outpatientSurgery),
-            policies: store.policies,
-            surgeryAmounts: amounts,
-            confirmedSurgeryPolicies: confirmedSurgeryPolicies
-        )
-        let invalidCount = surgeryAmounts.values.filter { !$0.isEmpty && Int($0) == nil }.count
-        if invalidCount > 0 {
-            result.excludedItems.insert("有 \(invalidCount) 筆手術金額不是有效整數，未納入；請重新輸入。", at: 0)
-        }
-        return result
-    }
 
     var body: some View {
         TabView {
@@ -41,12 +17,12 @@ struct ContentView: View {
                 .tabItem { Label("總覽", systemImage: "square.grid.2x2") }
             photoTab
                 .tabItem { Label("拍照建檔", systemImage: "camera.viewfinder") }
-            gapsTab
-                .tabItem { Label("保障檢視", systemImage: "checklist") }
+            PolicyHealthCheckView(store: store) { policyEditorRoute = .edit($0) }
+                .tabItem { Label("保單健檢", systemImage: "stethoscope") }
             CatalogView()
                 .tabItem { Label("商品條款", systemImage: "books.vertical") }
-            claimTab
-                .tabItem { Label("理賠試算", systemImage: "function") }
+            ClaimEstimateView(store: store)
+                .tabItem { Label("理賠預估", systemImage: "function") }
         }
         .sheet(item: $policyEditorRoute, onDismiss: { ocrText = "" }) { route in
             switch route {
@@ -66,7 +42,7 @@ struct ContentView: View {
                 }
                 Section("你的保單") {
                     if store.policies.isEmpty {
-                        ContentUnavailableView("尚未建立保單", systemImage: "doc.text.viewfinder", description: Text("拍攝保單頁面或手動輸入，建立第一筆保單。"))
+                        ContentUnavailableView("尚未建立保單", systemImage: "doc.text.viewfinder", description: Text("輸入保險公司簡稱與商品名稱，或拍攝保單頁面，建立第一筆保單。"))
                     } else {
                         ForEach(store.policies) { policy in
                             Button { policyEditorRoute = .edit(policy) } label: { policyRow(policy) }
@@ -87,7 +63,7 @@ struct ContentView: View {
             .navigationTitle("保單總覽")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                        Button { ocrText = ""; policyEditorRoute = .new(ocrDraft: "") } label: { Label("新增保單", systemImage: "plus") }
+                    Button { ocrText = ""; policyEditorRoute = .new(ocrDraft: "") } label: { Label("新增保單", systemImage: "plus") }
                 }
             }
         }
@@ -137,117 +113,10 @@ struct ContentView: View {
         }
     }
 
-    private var gapsTab: some View {
-        NavigationStack {
-            List {
-                Section("保障項目紀錄") {
-                    ForEach(CoverageCategory.allCases) { category in
-                        let matches = store.policies.filter { $0.categories.contains(category) }
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: category.symbol).frame(width: 24).foregroundStyle(matches.isEmpty ? .orange : .green)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(category.rawValue).font(.headline)
-                                if matches.isEmpty {
-                                    Text("目前未找到保單紀錄，需確認是否為保障缺口。")
-                                        .font(.footnote).foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(matches) { policy in
-                                        Text("\(policy.insurer)／\(policy.productName) · \(policy.clauseIsVerified ? "條款已核對" : "條款待核對")")
-                                            .font(.footnote).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.vertical, 3)
-                    }
-                }
-                Section("保單資料待補") {
-                    if store.policies.isEmpty {
-                        Text("建立保單後，這裡會提醒尚未記錄的生效日、保障類別或條款來源。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        let incomplete = store.policies.filter { !missingPolicyFields($0).isEmpty }
-                        if incomplete.isEmpty {
-                            Text("目前已填寫基本欄位；仍請以保單原件核對條款與保障內容。")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        } else {
-                            ForEach(incomplete) { policy in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text("\(policy.insurer)／\(policy.productName)").font(.subheadline.bold())
-                                    Text("尚未記錄：\(missingPolicyFields(policy).joined(separator: "、"))")
-                                        .font(.footnote).foregroundStyle(.secondary)
-                                    Button("編輯並補充") { policyEditorRoute = .edit(policy) }
-                                        .font(.footnote)
-                                }
-                                .padding(.vertical, 3)
-                            }
-                        }
-                    }
-                    Text("這些是資料完整度提示，不是保障缺口判定。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("如何解讀") {
-                    Text("這是依你自行建檔的保障清單所做的整理，不會判斷適不適合、保額是否足夠，也不會把「未找到」當成確定缺口。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Text("若商品名稱、附約或條款版本不確定，先回到保單及保險公司原始條款核對。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("保障檢視")
-        }
-    }
-
-    private var claimTab: some View {
-        NavigationStack {
-            Form {
-                Section("本次就醫資訊") {
-                    DatePicker("就醫日期", selection: $eventDate, displayedComponents: .date)
-                    Stepper("住院天數：\(hospitalDays) 天", value: $hospitalDays, in: 0...365)
-                    TextField("手術項目（請依醫師/病歷原文）", text: $surgeryName)
-                    Toggle("門診手術", isOn: $outpatientSurgery)
-                }
-                Section("逐張保單核對本次手術給付") {
-                    if store.policies.isEmpty {
-                        Text("先在「拍照建檔」建立保單，才能依各保單試算。")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(store.policies) { policy in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(policy.insurer)／\(policy.productName)").font(.headline)
-                            Text(policy.clauseIsVerified ? "條款版本與來源已記錄" : "條款尚未核對；此保單不會納入")
-                                .font(.caption).foregroundStyle(policy.clauseIsVerified ? .secondary : .orange)
-                            TextField("此保單對本手術已核對的定額金額（元）", text: amountBinding(for: policy))
-                                .keyboardType(.numberPad)
-                            Toggle("已依此保單條款/手術表核對本次項目", isOn: confirmationBinding(for: policy))
-                                .font(.footnote)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    Text("若未在保單建檔時記錄條款版本/頁碼/來源，該保單不參與估算。實支實付不以保額代替實際可賠金額。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("保守估算結果") {
-                    if estimate.canProduceFloor {
-                        Text("已知最低估算：NT$\(estimate.minimumKnownNTD.formatted())")
-                            .font(.title3.bold())
-                        ForEach(estimate.includedItems, id: \.self) { Text("• \($0)").font(.footnote) }
-                    } else {
-                        Text("目前無法提供可靠金額；不以缺少資料推算。")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(estimate.excludedItems, id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
-                    Text("此結果僅合計你輸入並逐張確認的定額給付，不是理賠承諾。實際理賠由保險公司依保單生效版本、診斷、手術代碼、除外責任、收據及完整理賠文件審核。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("理賠試算")
-        }
-    }
-
     private func policyRow(_ policy: UserPolicy) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(policy.productName).font(.headline)
-            Text(policy.insurer).font(.subheadline)
+            Text("\(policy.insurer) · \((policy.productRole ?? .unknown).rawValue)").font(.subheadline)
             Text(policy.clauseIsVerified ? "條款版本已核對" : "條款待核對；不納入金額試算")
                 .font(.caption).foregroundStyle(policy.clauseIsVerified ? .secondary : .orange)
             if !policy.categories.isEmpty {
@@ -255,28 +124,6 @@ struct ContentView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func missingPolicyFields(_ policy: UserPolicy) -> [String] {
-        var missing: [String] = []
-        if policy.startDate == nil { missing.append("生效日") }
-        if policy.categories.isEmpty { missing.append("保障類別") }
-        if policy.clauseVersion?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { missing.append("條款版本") }
-        if policy.clauseReference?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { missing.append("條號/頁碼") }
-        if policy.clauseURL?.scheme?.lowercased() != "https" { missing.append("官方條款來源") }
-        if policy.benefits.isEmpty { missing.append("給付項目") }
-        return missing
-    }
-
-    private func amountBinding(for policy: UserPolicy) -> Binding<String> {
-        Binding(get: { surgeryAmounts[policy.id, default: ""] }, set: { surgeryAmounts[policy.id] = $0 })
-    }
-
-    private func confirmationBinding(for policy: UserPolicy) -> Binding<Bool> {
-        Binding(get: { confirmedSurgeryPolicies.contains(policy.id) }, set: { confirmed in
-            if confirmed { confirmedSurgeryPolicies.insert(policy.id) }
-            else { confirmedSurgeryPolicies.remove(policy.id) }
-        })
     }
 
     @MainActor
@@ -294,14 +141,14 @@ private enum PolicyEditorRoute: Identifiable {
     case edit(UserPolicy)
 
     var id: String {
-        return switch self {
-        case .new(_): "new-policy"
-        case .edit(let policy): policy.id.uuidString
+        switch self {
+        case .new(_): return "new-policy"
+        case .edit(let policy): return policy.id.uuidString
         }
     }
 }
 
-private struct CameraPicker: UIViewControllerRepresentable {
+struct CameraPicker: UIViewControllerRepresentable {
     @Binding var image: UIImage?
     @Environment(\.dismiss) private var dismiss
 
